@@ -1,0 +1,5 @@
+{
+    "plugin.name": "SSH Plugin",
+    "actions.ssh.name": "SSH Action",
+    "actions.sshconnection.name": "SSH Connection Action"
+}

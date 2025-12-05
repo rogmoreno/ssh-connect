@@ -1,0 +1,22 @@
+{
+  "name": "SSH",
+  "version": "1.0.0",
+  "app-version": "1.5.0-beta.6",
+  "minimum-app-version": "1.5.0",
+  "id": "com_romoreno_ssh",
+  "github": "",
+  "thumbnail": "",
+  "descriptions": {
+    "en_US": "Connect to a server via SSH.",
+    "es_ES": "Conéctate a un servidor por SSH."
+  },
+  "short-descriptions": {
+    "en_US": "Connect via SSH",
+    "es_ES": "Conectar por SSH"
+  },
+  "tags": [
+    "SSH",
+    "Remote",
+    "Terminal"
+  ]
+}
