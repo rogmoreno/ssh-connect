@@ -22,10 +22,11 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw
 
 class SshAction(ActionBase):
-    REQUEST_CONFIGURATION_ON_ADD = True  # Open configuration automatically when button is added
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # Enable automatic configuration dialog when button is added
+        self.has_configuration = True
 
         # The action_id attribute is already set by the parent ActionBase class.
         # We can directly use self.action_id here.
