@@ -14,6 +14,7 @@ import subprocess
 import shutil
 import glob
 import configparser # Added for finding executable path
+import copy # Added for deep copying settings
 
 # Import gtk modules - used for the config rows
 import gi
@@ -49,7 +50,8 @@ class SshAction(ActionBase):
         # Merge local settings with the default settings (if any, from self.get_settings())
         # The internal self.get_settings() might provide default values that our local file could override.
         # We will prioritize local_settings.
-        self.settings = self.get_settings() # Get built-in defaults
+        # IMPORTANT: Use copy.deepcopy to ensure each instance has its own independent settings dictionary
+        self.settings = copy.deepcopy(self.get_settings()) # Get built-in defaults as a deep copy
         self.settings.update(local_settings) # Override with locally saved settings
 
         # Save the current state (merged with defaults) to ensure a file is created
@@ -151,8 +153,6 @@ class SshAction(ActionBase):
 
     def on_setting_changed(self, widget, first_arg_from_signal, *remaining_args):
         # print(f"on_setting_changed called for widget: {type(widget)}, first_arg: {first_arg_from_signal}, remaining_args: {remaining_args}")
-        # Fetch current settings from self.settings to update, not self.get_settings() from super
-        current_settings = self.settings
         actual_setting_key = None
         new_value = None
 
@@ -165,8 +165,8 @@ class SshAction(ActionBase):
 
         if actual_setting_key:
             # print(f"  Updating: setting_key={actual_setting_key}, new_value={new_value}") # Debug print
-            current_settings[actual_setting_key] = new_value
-            self.settings = current_settings # Update the instance variable
+            # Directly update self.settings - no need for intermediate variable
+            self.settings[actual_setting_key] = new_value
 
             # Save the updated settings to our local file
             self._save_settings_to_file()
