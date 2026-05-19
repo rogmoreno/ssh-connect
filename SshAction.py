@@ -32,9 +32,12 @@ class SshAction(ActionBase):
         # The action_id attribute is already set by the parent ActionBase class.
         # We can directly use self.action_id here.
 
-        # Ensure the settings directory exists
-        os.makedirs(os.path.join(self.plugin_base.PATH, "settings"), exist_ok=True)
-        self.settings_file = os.path.join(self.plugin_base.PATH, "settings", f"{self.action_id}.json")
+        # Save settings in user's home directory to persist across plugin updates
+        # Use XDG_CONFIG_HOME if available, otherwise fall back to ~/.config
+        config_dir = os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config'))
+        settings_base_dir = os.path.join(config_dir, 'streamcontroller', 'ssh_plugin', 'settings')
+        os.makedirs(settings_base_dir, exist_ok=True)
+        self.settings_file = os.path.join(settings_base_dir, f"{self.action_id}.json")
 
         # Load settings from local file or fall back to internal settings
         local_settings = {}
