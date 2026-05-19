@@ -82,6 +82,7 @@ class SshAction(ActionBase):
         """Update button label based on configuration status."""
         server = self.settings.get("server", "")
         username = self.settings.get("username", "")
+        execute_command_mode = self.settings.get("execute_command", False)
 
         if not server:
             self.set_bottom_label("No config", font_size=10)
@@ -91,6 +92,13 @@ class SshAction(ActionBase):
             # Truncate if too long
             if len(display_text) > 15:
                 display_text = display_text[:12] + "..."
+
+            # Add indicator for command execution mode
+            if execute_command_mode:
+                display_text = "CMD: " + display_text
+                if len(display_text) > 18:
+                    display_text = display_text[:15] + "..."
+
             self.set_bottom_label(display_text, font_size=9)
 
     def on_key_down(self) -> None:
@@ -101,6 +109,8 @@ class SshAction(ActionBase):
         gui = self.settings.get("gui", False)
         terminal_cmd_setting = self.settings.get("terminal_command", "x-terminal-emulator")
         terminal_cmd_parts = shlex.split(terminal_cmd_setting)
+        execute_command_mode = self.settings.get("execute_command", False)
+        remote_command = self.settings.get("remote_command", "")
 
         if not server:
             print("SSH Error: Server not configured. Please configure the SSH server in the button settings.")
@@ -108,7 +118,7 @@ class SshAction(ActionBase):
             return
 
         cmd = ["ssh"]
-        
+
         try:
             port = int(port_str)
             if port != 22:
@@ -120,36 +130,43 @@ class SshAction(ActionBase):
             cmd.append("-Y")
         if key:
             cmd.extend(["-i", key])
-        
+
         # Prepend username to server if provided
         target_server = f"{username}@{server}" if username else server
         cmd.append(target_server)
 
-        ssh_command_str = " ".join(cmd)
-        terminal_executable = terminal_cmd_parts[0]
-        
-        resolved_terminal_path = None
+        # Check if we should execute a command instead of opening an interactive terminal
+        if execute_command_mode and remote_command:
+            # Execute command mode
+            cmd.append(remote_command)
+            self._execute_remote_command(cmd)
+        else:
+            # Interactive terminal mode
+            ssh_command_str = " ".join(cmd)
+            terminal_executable = terminal_cmd_parts[0]
 
-        # 1. Try to resolve via .desktop files (most robust for GUI apps)
-        resolved_terminal_path = self._get_terminal_exec_path(terminal_executable)
+            resolved_terminal_path = None
 
-        if resolved_terminal_path:
-            print(f"Resolved terminal path via .desktop: {resolved_terminal_path}")
-            self._launch_terminal_with_ssh(resolved_terminal_path, ssh_command_str, use_shell=False)
-            return
+            # 1. Try to resolve via .desktop files (most robust for GUI apps)
+            resolved_terminal_path = self._get_terminal_exec_path(terminal_executable)
 
-        # 2. If not resolved via .desktop, try shutil.which as a path
-        print(f"Could not resolve terminal path via .desktop for '{terminal_executable}'. Trying shutil.which.")
-        full_terminal_path_from_which = shutil.which(terminal_executable)
+            if resolved_terminal_path:
+                print(f"Resolved terminal path via .desktop: {resolved_terminal_path}")
+                self._launch_terminal_with_ssh(resolved_terminal_path, ssh_command_str, use_shell=False)
+                return
 
-        if full_terminal_path_from_which:
-            print(f"Resolved terminal path via shutil.which: {full_terminal_path_from_which}")
-            self._launch_terminal_with_ssh(full_terminal_path_from_which, ssh_command_str, use_shell=False)
-            return
+            # 2. If not resolved via .desktop, try shutil.which as a path
+            print(f"Could not resolve terminal path via .desktop for '{terminal_executable}'. Trying shutil.which.")
+            full_terminal_path_from_which = shutil.which(terminal_executable)
 
-        # 3. Final fallback: use original terminal_executable with shell=True
-        print(f"Could not resolve terminal path. Falling back to shell execution of original command '{terminal_executable}'.")
-        self._launch_terminal_with_ssh(terminal_executable, ssh_command_str, use_shell=True)
+            if full_terminal_path_from_which:
+                print(f"Resolved terminal path via shutil.which: {full_terminal_path_from_which}")
+                self._launch_terminal_with_ssh(full_terminal_path_from_which, ssh_command_str, use_shell=False)
+                return
+
+            # 3. Final fallback: use original terminal_executable with shell=True
+            print(f"Could not resolve terminal path. Falling back to shell execution of original command '{terminal_executable}'.")
+            self._launch_terminal_with_ssh(terminal_executable, ssh_command_str, use_shell=True)
 
     def on_setting_changed(self, widget, first_arg_from_signal, *remaining_args):
         # print(f"on_setting_changed called for widget: {type(widget)}, first_arg: {first_arg_from_signal}, remaining_args: {remaining_args}")
@@ -234,7 +251,29 @@ class SshAction(ActionBase):
 
         self.terminal_row.connect("changed", self.on_setting_changed, "terminal_command")
 
-        return [self.username_row, self.server_row, self.key_row, self.port_row, self.gui_switch, self.terminal_row]
+        # Execute Command Switch
+        self.execute_command_switch = Adw.SwitchRow()
+        self.execute_command_switch.set_title("Execute Command Mode")
+        self.execute_command_switch.set_subtitle("Execute a command instead of opening an interactive terminal")
+        self.execute_command_switch.set_active(self.settings.get("execute_command", False))
+        self.execute_command_switch.connect("notify::active", self.on_setting_changed, "execute_command")
+
+        # Remote Command Entry
+        self.remote_command_row = Adw.EntryRow()
+        self.remote_command_row.set_title("Remote Command")
+        self.remote_command_row.set_text(self.settings.get("remote_command", ""))
+        self.remote_command_row.connect("changed", self.on_setting_changed, "remote_command")
+
+        return [
+            self.username_row,
+            self.server_row,
+            self.key_row,
+            self.port_row,
+            self.gui_switch,
+            self.terminal_row,
+            self.execute_command_switch,
+            self.remote_command_row
+        ]
 
     def _get_terminal_exec_path(self, terminal_name):
         desktop_files = glob.glob("/usr/share/applications/*.desktop")
@@ -265,6 +304,48 @@ class SshAction(ActionBase):
                 continue
         return None
 
+    def _execute_remote_command(self, ssh_cmd):
+        """Execute a command on the remote host and display the output in a terminal window."""
+        terminal_cmd_setting = self.settings.get("terminal_command", "x-terminal-emulator")
+        terminal_cmd_parts = shlex.split(terminal_cmd_setting)
+        terminal_executable = terminal_cmd_parts[0]
+
+        # Build the SSH command as a string
+        ssh_command_str = " ".join(shlex.quote(arg) for arg in ssh_cmd)
+
+        # Wrap the command to keep the terminal open after execution
+        # We use 'bash -c' to execute the command and then wait for user input
+        command_with_pause = f"{ssh_command_str}; echo ''; echo 'Press Enter to close...'; read"
+        quoted_command = shlex.quote(command_with_pause)
+        command_to_execute = f"bash -c {quoted_command}"
+
+        print(f"Executing remote command: {ssh_command_str}")
+
+        resolved_terminal_path = None
+
+        # Try to resolve terminal path
+        resolved_terminal_path = self._get_terminal_exec_path(terminal_executable)
+
+        if not resolved_terminal_path:
+            resolved_terminal_path = shutil.which(terminal_executable)
+
+        if not resolved_terminal_path:
+            resolved_terminal_path = terminal_executable
+
+        is_flatpak_env = is_in_flatpak()
+
+        try:
+            command_list = [resolved_terminal_path, "-e", command_to_execute]
+            if is_flatpak_env:
+                command_list.insert(0, "--host")
+                command_list.insert(0, "flatpak-spawn")
+
+            subprocess.Popen(command_list, start_new_session=True, cwd=os.path.expanduser("~"))
+            print("Remote command executed successfully.")
+        except Exception as e:
+            print(f"Failed to execute remote command: {e}")
+            self.show_error(duration=2)
+
     def _launch_terminal_with_ssh(self, terminal_executable_path, ssh_command_str, use_shell=False):
         # The key change is here: wrap ssh_command_str in `bash -c "..."`
         # This makes the command explicitly a shell command for the terminal emulator to run.
@@ -272,9 +353,9 @@ class SshAction(ActionBase):
         command_to_execute_in_terminal = f"bash -c {quoted_ssh_command_for_bash}"
 
         print(f"Attempting to launch: {terminal_executable_path} -e '{command_to_execute_in_terminal}' (use_shell={use_shell})")
-        
+
         is_flatpak_env = is_in_flatpak()
-        
+
         try:
             if use_shell:
                 # When use_shell=True, subprocess expects a single string command.
