@@ -22,9 +22,11 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw
 
 class SshAction(ActionBase):
+    HAS_CONFIGURATION = True  # Open configuration automatically when button is added
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
+
         # The action_id attribute is already set by the parent ActionBase class.
         # We can directly use self.action_id here.
 
@@ -61,11 +63,32 @@ class SshAction(ActionBase):
             print(f"Error saving settings to {self.settings_file}: {e}")
 
     def on_ready(self) -> None:
+        server = self.settings.get("server", "")
+
         icon_path = os.path.join(self.plugin_base.PATH, "assets", "ssh.png")
         if os.path.exists(icon_path):
             self.set_media(media_path=icon_path, size=0.75)
         else:
             self.set_label("SSH")
+
+        # Show visual indicator if not configured
+        if not server:
+            self.set_bottom_label("No config", font_size=10)
+
+    def _update_button_label(self) -> None:
+        """Update button label based on configuration status."""
+        server = self.settings.get("server", "")
+        username = self.settings.get("username", "")
+
+        if not server:
+            self.set_bottom_label("No config", font_size=10)
+        else:
+            # Show server name or username@server
+            display_text = f"{username}@{server}" if username else server
+            # Truncate if too long
+            if len(display_text) > 15:
+                display_text = display_text[:12] + "..."
+            self.set_bottom_label(display_text, font_size=9)
 
     def on_key_down(self) -> None:
         server = self.settings.get("server", "")
@@ -77,7 +100,8 @@ class SshAction(ActionBase):
         terminal_cmd_parts = shlex.split(terminal_cmd_setting)
 
         if not server:
-            print("SSH Error: Server not configured.")
+            print("SSH Error: Server not configured. Please configure the SSH server in the button settings.")
+            self.show_error(duration=2)
             return
 
         cmd = ["ssh"]
@@ -127,7 +151,7 @@ class SshAction(ActionBase):
     def on_setting_changed(self, widget, first_arg_from_signal, *remaining_args):
         # print(f"on_setting_changed called for widget: {type(widget)}, first_arg: {first_arg_from_signal}, remaining_args: {remaining_args}")
         # Fetch current settings from self.settings to update, not self.get_settings() from super
-        current_settings = self.settings 
+        current_settings = self.settings
         actual_setting_key = None
         new_value = None
 
@@ -137,7 +161,7 @@ class SshAction(ActionBase):
         elif isinstance(widget, Adw.SwitchRow):
             actual_setting_key = remaining_args[0]
             new_value = widget.get_active()
-        
+
         if actual_setting_key:
             # print(f"  Updating: setting_key={actual_setting_key}, new_value={new_value}") # Debug print
             current_settings[actual_setting_key] = new_value
@@ -146,6 +170,9 @@ class SshAction(ActionBase):
             # Save the updated settings to our local file
             self._save_settings_to_file()
             # print(f"Settings after save: {self.settings}") # Debug print
+
+            # Update visual indicator when server is configured
+            self._update_button_label()
         else:
             print(f"  Warning: Could not determine actual_setting_key for widget type: {type(widget)}")
 

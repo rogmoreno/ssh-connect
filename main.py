@@ -19,7 +19,7 @@ class SshPlugin(PluginBase):
         # Register plugin
         self.register(
             plugin_name = self.lm.get("plugin.name"),
-            github_repo = "https://github.com/rogmoreno/ssh-connect", # Placeholder
+            github_repo = "https://github.com/StreamController/ssh_plugin", # Placeholder
             plugin_version = "0.0.1", # Placeholder
             app_version = "1.0.0-alpha" # Placeholder
         )
