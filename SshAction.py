@@ -140,7 +140,9 @@ class SshAction(ActionBase):
 
         # Check if we should execute a command instead of opening an interactive terminal
         if execute_command_mode and remote_command:
-            # Execute command mode
+            # Execute command mode - add -t flag to force pseudo-terminal allocation
+            # Insert -t before the target server (which is the last element before the command)
+            cmd.insert(-1, "-t")
             cmd.append(remote_command)
             self._execute_remote_command(cmd)
         else:
